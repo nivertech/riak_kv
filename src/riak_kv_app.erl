@@ -137,7 +137,7 @@ start(_Type, _StartArgs) ->
                                           [enabled_v1, disabled],
                                           disabled),
 
-            riak_core_capability:register({riak_kv, vclock_encoding},
+            riak_core_capability:register({riak_kv, vclock_data_encoding},
                                           [encode_zlib, encode_raw],
                                           encode_zlib), 
 
