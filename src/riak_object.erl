@@ -59,7 +59,8 @@
 -export([new/3, new/4, ensure_robject/1, ancestors/1, reconcile/2, equal/2]).
 -export([increment_vclock/2, increment_vclock/3]).
 -export([key/1, get_metadata/1, get_metadatas/1, get_values/1, get_value/1]).
--export([vclock/1, update_value/2, update_metadata/2, bucket/1, value_count/1]).
+-export([vclock/1, vclock_header/1, encode_vclock/1, decode_vclock/1]).
+-export([update_value/2, update_metadata/2, bucket/1, value_count/1]).
 -export([get_update_metadata/1, get_update_value/1, get_contents/1]).
 -export([merge/2, apply_updates/1, syntactic_merge/2]).
 -export([to_json/1, from_json/1]).
@@ -394,7 +395,7 @@ set_contents(Object=#r_object{}, MVs) when is_list(MVs) ->
 %%      into something suitable for an HTTP header
 vclock_header(Doc) ->
     {?HEAD_VCLOCK,
-        binary_to_list(riak_kv_wm_utils:encode_vclock(term_to_binary(riak_object:vclock(Doc))))}.
+        binary_to_list(encode_vclock(term_to_binary(riak_object:vclock(Doc))))}.
 
 %% @spec to_json(riak_object()) -> {struct, list(any())}
 %% @doc Converts a riak_object into its JSON equivalent
@@ -417,7 +418,7 @@ from_json(Obj) ->
     Bucket = proplists:get_value(<<"bucket">>, Obj),
     Key = proplists:get_value(<<"key">>, Obj),
     VClock0 = proplists:get_value(<<"vclock">>, Obj),
-    VClock = riak_kv_wm_utils:vclock_to_term(VClock0),
+    VClock = binary_to_term(decode_vclock(VClock0)),
     [{struct, Values}] = proplists:get_value(<<"values">>, Obj),
     RObj0 = riak_object:new(Bucket, Key, <<"">>),
     RObj1 = riak_object:set_vclock(RObj0, VClock),
@@ -546,6 +547,31 @@ syntactic_merge(CurrentObject, NewObject) ->
                 true  -> UpdatedNew;
                 false -> UpdatedCurr
             end
+    end.
+
+
+%%
+%% Helpers for managing vector clock encoding and related capability:
+%%
+
+%% Fetch the preferred vclock encoding method:
+vclock_encoding_method() ->
+    riak_core_capability:get({riak_kv, vclock_data_encoding}, encode_zlib).
+
+%% Encode a vclock in accordance with our capability setting:
+-spec encode_vclock(VClock :: term()) -> binary().
+encode_vclock(VClock) ->
+    case vclock_encoding_method() of
+        encode_zlib -> base64:encode(zlib:zip(VClock));
+        encode_raw  -> base64:encode(VClock)
+    end.
+
+%% Decode a vclock against our capability settings:
+-spec decode_vclock(VClock :: term()) -> vclock:vclock().
+decode_vclock(VClock) ->
+    case vclock_encoding_method() of
+        encode_zlib -> zlib:unzip(base64:decode(VClock));
+        encode_raw  -> base64:decode(VClock)
     end.
 
 -ifdef(TEST).
