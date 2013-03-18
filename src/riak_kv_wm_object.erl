@@ -855,6 +855,8 @@ delete_resource(RD, Ctx=#ctx{bucket=B, key=K, client=C, rw=RW, r=R, w=W,
         undefined -> 
             C:delete(B,K,Options);
         _ ->
+io:format("JFW: delete_resource() -- delete vclock called.~n"),
+io:format("JFW: delete_resource() decoded header: ~p~n", [decode_vclock_header(RD)]),
             C:delete_vclock(B,K,decode_vclock_header(RD),Options)
     end,
     case Result of
