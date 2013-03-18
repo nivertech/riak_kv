@@ -28,7 +28,7 @@
 
 -define(SERVICES, [{riak_kv_pb_object, 3, 6}, %% ClientID stuff
                    {riak_kv_pb_object, 9, 14}, %% Object requests
-                   {riak_kv_pb_bucket, 15, 22}, %% Bucket requests
+                   {riak_kv_pb_bucket, 15, 18}, %% Bucket requests
                    {riak_kv_pb_mapred, 23, 24}, %% MapReduce requests
                    {riak_kv_pb_index, 25, 26} %% Secondary index requests
                   ]).
@@ -140,6 +140,10 @@ start(_Type, _StartArgs) ->
             riak_core_capability:register({riak_kv, vclock_data_encoding},
                                           [encode_zlib, encode_raw],
                                           encode_zlib), 
+
+            riak_core_capability:register({riak_kv, object_format},
+                                          [v1, v0],
+                                          v0),
 
             %% Go ahead and mark the riak_kv service as up in the node watcher.
             %% The riak_core_ring_handler blocks until all vnodes have been started

@@ -572,11 +572,11 @@ post_is_create(RD, Ctx) ->
 %% @doc Choose the Key for the document created during a bucket-level POST.
 %%      This function also sets the Location header to generate a
 %%      201 Created response.
-create_path(RD, Ctx=#ctx{prefix=P, bucket=B}) ->
+create_path(RD, Ctx=#ctx{prefix=P, bucket=B, api_version=V}) ->
     K = riak_core_util:unique_id_62(),
     {K,
      wrq:set_resp_header("Location",
-                         lists:append(["/",P,"/",binary_to_list(B),"/",K]),
+                         riak_kv_wm_utils:format_uri(B, K, P, V),
                          RD),
      Ctx#ctx{key=list_to_binary(K)}}.
 
@@ -1046,12 +1046,12 @@ handle_common_error(Reason, RD, Ctx) ->
                             [Returned, Requested]),
                         RD)),
                 Ctx};
-        {error, {w_val_unsatisfied, NumW, NumDW, W, DW}} ->
+        {error, {dw_val_unsatisfied, DW, NumDW}} ->
             {{halt, 503},
                 wrq:set_resp_header("Content-Type", "text/plain",
                     wrq:append_to_response_body(
-                        io_lib:format("W/DW-value unsatisfied: w=~p/~p dw=~p/~p~n",
-                            [NumW, W, NumDW, DW]),
+                        io_lib:format("DW-value unsatisfied: ~p/~p~n",
+                            [NumDW, DW]),
                         RD)),
                 Ctx};
         {error, {pr_val_unsatisfied, Requested, Returned}} ->
