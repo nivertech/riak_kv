@@ -79,6 +79,85 @@ register_stat(Name, Type) ->
     gen_server:call(?SERVER, {register, Name, Type}).
 
 update(Arg) ->
+    SampleRate = case application:get_env(riak_kv, stats_sample_rate) of
+        {ok, V} ->
+            V;
+        _ ->
+            undefined
+    end,
+    case statsd_client:should_sample(SampleRate) of
+        true ->
+            case application:get_env(riak_kv, stats_backend) of
+                {ok, statsd} ->
+                    try
+                        statsd_update(Arg, SampleRate)
+                    catch
+                        ErrClass:Err ->
+                            lager:error("~p:~p updating stat ~p.", [ErrClass, Err, Arg])
+                    end;
+                _ ->
+                    folsom_update(Arg)
+            end;
+        false ->
+            ok
+    end.
+
+statsd_update({vnode_get, _Idx, Usecs}, SampleRate) ->
+    statsd_client:timing(riak_kv_statsd, "riak_kv.vnode.get", Usecs/1000, SampleRate);
+
+statsd_update({vnode_put, _Idx, Usecs}, SampleRate) ->
+    statsd_client:timing(riak_kv_statsd, "riak_kv.vnode.put", Usecs/1000, SampleRate);
+
+statsd_update(vnode_index_read, SampleRate) ->
+    statsd_client:count(riak_kv_statsd, "riak_kv.vnode.index.reads", 1, SampleRate);
+
+statsd_update({vnode_index_write, PostingsAdded, PostingsRemoved}, SampleRate) ->
+    Metrics = [{count, "riak_kv.vnode.index.writes", 1, SampleRate},
+               {count, "riak_kv.vnode.index.writes.postings", PostingsAdded, SampleRate},
+               {count, "riak_kv.vnode.index.deletes.postings", PostingsRemoved, SampleRate}],
+    statsd_client:metrics(riak_kv_statsd, Metrics);
+
+statsd_update({vnode_index_delete, Postings}, SampleRate) ->
+    Metrics = [{count, "riak_kv.vnode.index.deletes", Postings, SampleRate},
+               {count, "riak_kv.vnode.index.deletes.postings", Postings, SampleRate}],
+    statsd_client:metrics(riak_kv_statsd, Metrics);
+
+statsd_update({get_fsm, _Bucket, USecs, Stages, undefined, undefined, _PerBucket}, SampleRate) ->
+    %% not sure what per_bucket stats are doing in the folsom implementation
+    Fun = fun({State, Time}) ->
+            Name = io_lib:format("riak_kv.node.get.~p", [State]),
+            {time, Name, Time/1000, SampleRate}
+    end,
+    Metrics = [Fun(Stage) || Stage <- Stages],
+    Metrics1 = [{time, "riak_kv.node.get", USecs/1000, SampleRate}|Metrics],
+    statsd_client:metrics(riak_kv_statsd, Metrics1);
+
+statsd_update({get_fsm, _Bucket, USecs, Stages, NumSiblings, ObjSize, _PerBucket}, SampleRate) ->
+    Fun = fun({State, Time}) ->
+            Name = io_lib:format("riak_kv.node.get.~p", [State]),
+            {time, Name, Time/1000, SampleRate}
+    end,
+    Metrics = [Fun(Stage) || Stage <- Stages],
+    Metrics1 = [{time, "riak_kv.node.get", USecs/1000, SampleRate}|Metrics],
+    %% I'm not sure gauge is really what we want for ObjSize and NumSilbings
+    Metrics2 = [{gauge, "riak_kv.node.siblings", NumSiblings},
+                {gauge, "riak_kv.node.objsize", ObjSize}|Metrics1],
+    statsd_client:metrics(riak_kv_statsd, Metrics2);
+
+statsd_update({put_fsm_time, _Bucket, USecs, Stages, _PerBucket}, SampleRate) ->
+    Fun = fun({State, Time}) ->
+            Name = io_lib:format("riak_kv.node.put.~p", [State]),
+            {time, Name, Time/1000, SampleRate}
+    end,
+    Metrics = [Fun(Stage) || Stage <- Stages],
+    Metrics1 = [{time, "riak_kv.node.put", USecs/1000, SampleRate}|Metrics],
+    statsd_client:metrics(riak_kv_statsd, Metrics1);
+
+statsd_update(_, _) ->
+    %% too tired to finish right now
+    ok.
+
+folsom_update(Arg) ->
     %% Large message queues on heavily loaded nodes
     %% mean calling folsom direct, rather than casting here.
     %% We catch the update so a failed stat update

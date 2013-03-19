@@ -87,6 +87,9 @@ init([]) ->
     EntropyManager = {riak_kv_entropy_manager,
                       {riak_kv_entropy_manager, start_link, []},
                       permanent, 30000, worker, [riak_kv_entropy_manager]},
+    StatsdClient = {statsd_client,
+                    {statsd_client, start_link, [{local, riak_kv_statsd}, []]},
+                    permanent, 5000, worker, [statsd_client]},
 
     % Figure out which processes we should run...
     HasStorageBackend = (app_helper:get_env(riak_kv, storage_backend) /= undefined),
@@ -105,7 +108,8 @@ init([]) ->
         JSSup,
         MapJSPool,
         ReduceJSPool,
-        HookJSPool
+        HookJSPool,
+        StatsdClient
     ]),
 
     % Run the proesses...
