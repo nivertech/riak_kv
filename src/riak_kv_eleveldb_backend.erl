@@ -40,6 +40,8 @@
          status/1,
          callback/3]).
 
+-export([data_size/1]).
+
 -compile({inline, [
                    to_object_key/2, from_object_key/1,
                    to_index_key/4, from_index_key/1
@@ -50,7 +52,7 @@
 -endif.
 
 -define(API_VERSION, 1).
--define(CAPABILITIES, [async_fold, indexes]).
+-define(CAPABILITIES, [async_fold, indexes, size]).
 
 -record(state, {ref :: reference(),
                 data_root :: string(),
@@ -307,6 +309,16 @@ status(State) ->
 -spec callback(reference(), any(), state()) -> {ok, state()}.
 callback(_Ref, _Msg, State) ->
     {ok, State}.
+
+%% @doc Get the size of the eleveldb backend in bytes
+-spec data_size(state()) -> undefined | {non_neg_integer(), bytes}.
+data_size(State) ->
+    {ok, <<SizeStr/binary>>} = eleveldb:status(State#state.ref, <<"leveldb.total-bytes">>),
+    try list_to_integer(binary_to_list(SizeStr)) of
+        Size -> {Size, bytes}
+    catch
+        error:badarg -> undefined
+    end.
 
 %% ===================================================================
 %% Internal functions
